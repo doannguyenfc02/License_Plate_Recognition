@@ -6,8 +6,6 @@ import cv2
 import torch
 import function.utils_rotate as utils_rotate
 import function.helper as helper
-import numpy as np
-
 
 app = Flask(__name__)
 
@@ -15,39 +13,16 @@ yolo_LP_detect = torch.hub.load('yolov5', 'custom', path='model/LP_detector.pt',
 yolo_license_plate = torch.hub.load('yolov5', 'custom', path='model/LP_ocr.pt', force_reload=True, source='local')
 yolo_license_plate.conf = 0.60
 
-def process_image_base64(base64_encoded):
-    try:
-        # Giải mã mã base64
-        file_content = base64.b64decode(base64_encoded)
+def process_image(img_path):
+    img = cv2.imread(img_path)
+    plates = yolo_LP_detect(img, size=640)
 
-        # Chuyển đổi nội dung thành hình ảnh
-        image = Image.open(BytesIO(file_content))
-
-        # Chuyển đổi ảnh thành mảng numpy
-        img_np = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-
-        # Xử lý ảnh và nhận diện
-        license_plate, list_read_plates = process_image(img_np)
-
-        # Trả về JSON response
-        response_data = {
-            'license_plate': license_plate,
-            'list_read_plates': list(list_read_plates)
-        }
-
-        return jsonify(response_data), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-def process_image(img):
-    # Tương tự như trước, xử lý ảnh và nhận diện
     plates = yolo_LP_detect(img, size=640)
     list_plates = plates.pandas().xyxy[0].values.tolist()
     list_read_plates = set()
     license_plate = None
     if len(list_plates) == 0:
-        lp = helper.read_plate(yolo_license_plate, img)
+        lp = helper.read_plate(yolo_license_plate,img)
         if lp != "unknown":
             license_plate = lp
             list_read_plates.add(lp)
@@ -84,8 +59,26 @@ def upload_file():
         if 'file' not in data:
             return jsonify({'error': 'Missing "file" field'}), 400
 
-        # Gọi hàm xử lý trực tiếp từ base64
-        return process_image_base64(data['file'])
+        # Giải mã mã base64
+        base64_encoded = data['file']
+        file_content = base64.b64decode(base64_encoded)
+
+        # Chuyển đổi nội dung thành hình ảnh
+        image = Image.open(BytesIO(file_content))
+
+        # Lưu hình ảnh thành tệp
+        image.save('static/uploaded_image.jpg')
+
+        # Xử lý ảnh và nhận diện
+        license_plate, list_read_plates = process_image('static/uploaded_image.jpg')
+
+        # Trả về JSON response
+        response_data = {
+            'license_plate': license_plate,
+            'list_read_plates': list(list_read_plates)
+        }
+
+        return jsonify(response_data), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
